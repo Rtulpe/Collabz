@@ -218,7 +218,7 @@ function App(){
 
   return (
     <div className='App' style={{ position: 'relative' }}>
-      <h1>Google Docs men jumia</h1>
+      <h1>Tulpe Lens</h1>
       <div style={{ position: 'relative', display: 'inline-block' }}>
         <textarea
            ref={textareaRef}
