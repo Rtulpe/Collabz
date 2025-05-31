@@ -26,43 +26,59 @@ function App(){
   }, []);
 
   useEffect(() => {
-    const newSocket = new WebSocket('ws://192.168.1.104:5001') ; 
-    setSocket(newSocket) ;
-
-    newSocket.onopen = () => {
-      console.log('websocket connection established') ; 
-    };
-
-    newSocket.onmessage = (event) => {
-      try{
-        const message = JSON.parse(event.data) ; 
-        if(message.type === 'init'){
-          setDocument(message.data) ;
-          if (message.clientId) setClientId(message.clientId);
-        }else if(message.type === 'update'){
-          setDocument(message.data)  ;
-        }else if(message.type === 'cursor'){
-          setCursors(prev => ({
-            ...prev,
-            [message.clientId]: { position: message.position, lastActive: Date.now() }
-          }));
+    let didSucceed = false;
+    let ws;
+    function connect(url, onSuccess, onFail) {
+      ws = new WebSocket(url);
+      ws.onopen = () => {
+        setSocket(ws);
+        didSucceed = true;
+        console.log('websocket connection established:', url);
+        if (onSuccess) onSuccess();
+      };
+      ws.onmessage = (event) => {
+        try{
+          const message = JSON.parse(event.data);
+          if(message.type === 'init'){
+            setDocument(message.data);
+            if (message.clientId) setClientId(message.clientId);
+          }else if(message.type === 'update'){
+            setDocument(message.data);
+          }else if(message.type === 'cursor'){
+            setCursors(prev => ({
+              ...prev,
+              [message.clientId]: { position: message.position, lastActive: Date.now() }
+            }));
+          }
+        } catch(error){
+          console.error('error parsing message', error);
         }
-      } catch(error){
-        console.error('error parsing message' , error) ; 
+      };
+      ws.onclose = () => {
+        console.log('websocket connection closed:', url);
+        if (!didSucceed && onFail) onFail();
+      };
+      ws.onerror = (error) => {
+        console.error('websocket error:', error);
+        if (!didSucceed && onFail) onFail();
+      };
+      return ws;
+    }
+
+    // Try main server, then backup
+    const mainUrl = 'ws://192.168.1.104:5001';
+    const backupUrl = 'ws://192.168.1.104:5002';
+    let triedBackup = false;
+    let wsInstance = connect(mainUrl, null, () => {
+      if (!triedBackup) {
+        triedBackup = true;
+        wsInstance = connect(backupUrl);
       }
-    };
-
-    newSocket.onclose = () => {
-      console.log('websocket connection closed') ; 
-    };
-
-    newSocket.onerror = (error) => {
-      console.error('websocket error:', error) ;
-    };
+    });
 
     return () => {
-      newSocket.close() ; 
-    } ;
+      if (wsInstance) wsInstance.close();
+    };
   },[]) ;
 
   const handleChange = (e) => {

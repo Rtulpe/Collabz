@@ -2,11 +2,30 @@ import asyncio
 import websockets
 import json
 import uuid
+import os
 
 PORT = 5001
 DOCUMENT = ""  # Store the document content
 clients = set()
 cursor_positions = {}  # Track cursor positions by client id
+STATE_FILE = "server_state.json"
+
+async def save_state():
+    state = {
+        "document": DOCUMENT,
+        "cursor_positions": cursor_positions
+    }
+    with open(STATE_FILE, "w") as f:
+        json.dump(state, f)
+
+async def load_state():
+    global DOCUMENT, cursor_positions
+    if os.path.exists(STATE_FILE):
+        with open(STATE_FILE, "r") as f:
+            state = json.load(f)
+            DOCUMENT = state.get("document", "")
+            cursor_positions.clear()
+            cursor_positions.update(state.get("cursor_positions", {}))
 
 async def handler(ws , _):
     global DOCUMENT
@@ -24,6 +43,7 @@ async def handler(ws , _):
                 parsed_message = json.loads(message)
                 if parsed_message.get("type") == "update":
                     DOCUMENT = parsed_message.get("data", "")
+                    await save_state()
                     # Broadcast the update to all connected clients
                     for client in clients:
                         if client.open:
@@ -31,6 +51,7 @@ async def handler(ws , _):
                 elif parsed_message.get("type") == "cursor":
                     pos = parsed_message.get("position", 0)
                     cursor_positions[client_id] = pos
+                    await save_state()
                     # Broadcast cursor position to all other clients
                     for client in clients:
                         if client.open and client != ws:
@@ -42,8 +63,10 @@ async def handler(ws , _):
     finally:
         clients.remove(ws)
         cursor_positions.pop(client_id, None)
+        await save_state()
 
 async def main():
+    await load_state()
     async with websockets.serve(handler, "0.0.0.0", PORT):
         print(f"server listening on port {PORT}")
         await asyncio.Future()  # run forever
