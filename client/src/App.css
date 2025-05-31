@@ -2,7 +2,7 @@
 .App {
   text-align: center;
   font-family: 'Arial', sans-serif;
-  background: linear-gradient(to right, #6a11cb, #2575fc);
+  background: linear-gradient(to top, #ffde23, #82e77e);
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -26,7 +26,7 @@ textarea {
   height: 600px;
   padding: 15px;
   border: none;
-  border-radius: 10px;
+  border-radius: 5px;
   outline: none;
   font-size: 1.2rem;
   line-height: 1.5;
@@ -42,23 +42,46 @@ textarea:focus {
   background-color: #f9f9f9;
 }
 
-/* Button Styling */
-button {
-  margin-top: 20px;
-  padding: 10px 20px;
-  font-size: 1rem;
-  color: #fff;
-  background-color: #2575fc;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
-  transition: background-color 0.3s ease, transform 0.2s ease-in-out;
+/* Remote Cursor Styling */
+.remote-cursor-container {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+  z-index: 10;
+  transform: translateY(-50%);
 }
 
-button:hover {
-  background-color: #6a11cb;
-  transform: scale(1.05);
+.remote-cursor-label {
+  color: #1976d2;
+  font-weight: bold;
+  font-size: 0.9em;
+  background: white;
+  border-radius: 4px;
+  border: 1px solid #1976d2;
+  padding: 0 4px;
+  margin-bottom: 2px;
+  box-shadow: 0 1px 4px #0001;
+  opacity: 0.85;
+  user-select: none;
+  position: relative;
+  top: -8px;
+}
+
+.remote-cursor-caret {
+  color: #d32f2f;
+  font-weight: bold;
+  font-size: 1.3em;
+  background: transparent;
+  user-select: none;
+  text-shadow: 0 1px 2px #fff, 0 0 2px #d32f2f;
+  line-height: 1;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: 0;
 }
 
 /* Responsive Design */

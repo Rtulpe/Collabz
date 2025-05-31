@@ -26,7 +26,7 @@ function App(){
   }, []);
 
   useEffect(() => {
-    const newSocket = new WebSocket('ws://localhost:5001') ; 
+    const newSocket = new WebSocket('ws://192.168.1.104:5001') ; 
     setSocket(newSocket) ;
 
     newSocket.onopen = () => {
@@ -53,7 +53,7 @@ function App(){
     };
 
     newSocket.onclose = () => {
-      console.log('websocket conenction closed') ; 
+      console.log('websocket connection closed') ; 
     };
 
     newSocket.onerror = (error) => {
@@ -151,10 +151,8 @@ function App(){
       .filter(([id]) => id !== clientId)
       .map(([id], idx) => {
         const coords = cursorCoords[id] || { top: 0, left: 0 };
-        // Show only the first letter of the UUID, lowercase
         const label = id[0] ? id[0].toLowerCase() : '?';
-        // Calculate a better horizontal offset for the caret
-        let charWidth = 9; // fallback
+        let charWidth = 9;
         if (textareaRef.current) {
           const style = window.getComputedStyle(textareaRef.current);
           charWidth = parseFloat(style.fontSize) * 0.6;
@@ -162,55 +160,14 @@ function App(){
         return (
           <div
             key={id}
+            className="remote-cursor-container"
             style={{
-              position: 'absolute',
               top: coords.top,
-              left: coords.left + charWidth * 4,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              pointerEvents: 'none',
-              zIndex: 10,
-              transform: 'translateY(-50%)',
+              left: coords.left + charWidth * 2,
             }}
           >
-            <div
-              style={{
-                color: '#1976d2',
-                fontWeight: 'bold',
-                fontSize: '0.9em',
-                background: 'white',
-                borderRadius: '4px',
-                border: '1px solid #1976d2',
-                padding: '0 4px',
-                marginBottom: '2px',
-                boxShadow: '0 1px 4px #0001',
-                opacity: 0.85,
-                userSelect: 'none',
-                position: 'relative',
-                top: '-8px',
-              }}
-            >
-              {label}
-            </div>
-            <div
-              style={{
-                color: '#d32f2f',
-                fontWeight: 'bold',
-                fontSize: '1.3em',
-                background: 'transparent',
-                userSelect: 'none',
-                textShadow: '0 1px 2px #fff, 0 0 2px #d32f2f',
-                lineHeight: '1',
-                height: '20px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                letterSpacing: '0',
-              }}
-            >
-              {'I'}
-            </div>
+            <div className="remote-cursor-label">{label}</div>
+            <div className="remote-cursor-caret">I</div>
           </div>
         );
       });

@@ -4,30 +4,30 @@ import json
 import uuid
 
 PORT = 5001
-document = ""  # Store the document content
+DOCUMENT = ""  # Store the document content
 clients = set()
 cursor_positions = {}  # Track cursor positions by client id
 
-async def handler(ws, path):
-    global document
+async def handler(ws , _):
+    global DOCUMENT
     client_id = str(uuid.uuid4())
     clients.add(ws)
     cursor_positions[client_id] = 0
     print("new client connected")
 
     # Send the current version of the document and client id to the newly connected client
-    await ws.send(json.dumps({"type": "init", "data": document, "clientId": client_id}))
+    await ws.send(json.dumps({"type": "init", "data": DOCUMENT, "clientId": client_id}))
 
     try:
         async for message in ws:
             try:
                 parsed_message = json.loads(message)
                 if parsed_message.get("type") == "update":
-                    document = parsed_message.get("data", "")
+                    DOCUMENT = parsed_message.get("data", "")
                     # Broadcast the update to all connected clients
                     for client in clients:
                         if client.open:
-                            await client.send(json.dumps({"type": "update", "data": document}))
+                            await client.send(json.dumps({"type": "update", "data": DOCUMENT}))
                 elif parsed_message.get("type") == "cursor":
                     pos = parsed_message.get("position", 0)
                     cursor_positions[client_id] = pos
