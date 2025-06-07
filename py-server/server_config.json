@@ -1,0 +1,8 @@
+{
+  "id": "server2",
+  "port": 5002,
+  "peers": [
+    { "id": "server1", "host": "192.168.1.237", "port": 5001 },
+    { "id": "server3", "host": "192.168.1.106", "port": 5001 }
+  ]
+}

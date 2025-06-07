@@ -7,8 +7,20 @@ function App(){
   const [clientId, setClientId] = useState(null);
   const [cursors, setCursors] = useState({}); // { clientId: { position, lastActive } }
   const [cursorCoords, setCursorCoords] = useState({}); // { clientId: {top, left} }
+  const [clientAddr, setClientAddr] = useState(null); // <-- NEW
   const textareaRef = React.useRef(null);
   const mirrorRef = React.useRef(null);
+
+  // Fetch client address from config
+  useEffect(() => {
+    fetch('/client_config.json')
+      .then(res => res.json())
+      .then(cfg => {
+        if (cfg.client) {
+          setClientAddr(`http://${cfg.client.host}:${cfg.client.port}`);
+        }
+      });
+  }, []);
 
   // Clean up inactive cursors every second
   useEffect(() => {
@@ -26,15 +38,41 @@ function App(){
   }, []);
 
   useEffect(() => {
-    let didSucceed = false;
     let ws;
-    function connect(url, onSuccess, onFail) {
-      ws = new WebSocket(url);
+    let reconnectTimeout = null;
+    let isUnmounted = false;
+    let servers = [];
+    let currentMain = null;
+
+    async function fetchConfig() {
+      const res = await fetch('/client_config.json');
+      const cfg = await res.json();
+      servers = cfg.servers || [];
+    }
+
+    async function findMainServer() {
+      // Query all servers for /health, pick the one with role: 'main'
+      for (const s of servers) {
+        try {
+          const url = `http://${s.host}:${s.port}/health`;
+          const res = await fetch(url, { timeout: 1000 });
+          const data = await res.json();
+          if (data.role === 'main') {
+            return s;
+          }
+        } catch {}
+      }
+      return null;
+    }
+
+    function connectToServer(server) {
+      if (!server) return;
+      const wsUrl = `ws://${server.host}:${server.port}/ws`;
+      ws = new window.WebSocket(wsUrl);
       ws.onopen = () => {
         setSocket(ws);
-        didSucceed = true;
-        console.log('websocket connection established:', url);
-        if (onSuccess) onSuccess();
+        currentMain = server;
+        console.log('websocket connection established:', wsUrl);
       };
       ws.onmessage = (event) => {
         try{
@@ -55,29 +93,44 @@ function App(){
         }
       };
       ws.onclose = () => {
-        console.log('websocket connection closed:', url);
-        if (!didSucceed && onFail) onFail();
+        if (isUnmounted) return;
+        console.log('websocket connection closed:', wsUrl);
+        attemptReconnect();
       };
       ws.onerror = (error) => {
+        if (isUnmounted) return;
         console.error('websocket error:', error);
-        if (!didSucceed && onFail) onFail();
+        ws.close();
       };
-      return ws;
     }
 
-    // Try main server, then backup
-    const mainUrl = 'ws://192.168.1.104:5001';
-    const backupUrl = 'ws://192.168.1.104:5002';
-    let triedBackup = false;
-    let wsInstance = connect(mainUrl, null, () => {
-      if (!triedBackup) {
-        triedBackup = true;
-        wsInstance = connect(backupUrl);
+    async function attemptReconnect() {
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      reconnectTimeout = setTimeout(async () => {
+        const main = await findMainServer();
+        if (main) {
+          connectToServer(main);
+        } else {
+          // Try again in 2s
+          attemptReconnect();
+        }
+      }, 2000);
+    }
+
+    (async () => {
+      await fetchConfig();
+      const main = await findMainServer();
+      if (main) {
+        connectToServer(main);
+      } else {
+        attemptReconnect();
       }
-    });
+    })();
 
     return () => {
-      if (wsInstance) wsInstance.close();
+      isUnmounted = true;
+      if (ws) ws.close();
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
     };
   },[]) ;
 
@@ -192,6 +245,11 @@ function App(){
   return (
     <div className='App' style={{ position: 'relative' }}>
       <h1>Tulpe Lens</h1>
+      {clientAddr && (
+        <div style={{ marginBottom: 10, color: '#444', fontSize: 16 }}>
+          <b>Client address:</b> <span>{clientAddr}</span>
+        </div>
+      )}
       <div style={{ position: 'relative', display: 'inline-block' }}>
         <textarea
            ref={textareaRef}
