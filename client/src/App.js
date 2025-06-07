@@ -246,7 +246,7 @@ function App(){
     <div className='App' style={{ position: 'relative' }}>
       <h1>Tulpe Lens</h1>
       {clientAddr && (
-        <div style={{ marginBottom: 10, color: '#444', fontSize: 16 }}>
+        <div className="client-address">
           <b>Client address:</b> <span>{clientAddr}</span>
         </div>
       )}
@@ -265,22 +265,7 @@ function App(){
         <div
           id="textarea-mirror"
           ref={mirrorRef}
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '100%',
-            whiteSpace: 'pre-wrap',
-            wordWrap: 'break-word',
-            visibility: 'hidden',
-            pointerEvents: 'none',
-            fontFamily: 'inherit',
-            fontSize: 'inherit',
-            padding: '8px',
-            boxSizing: 'border-box',
-            zIndex: 0
-          }}
+          className="textarea-mirror"
         />
         {renderCursors()}
       </div>
