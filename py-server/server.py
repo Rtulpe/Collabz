@@ -136,12 +136,17 @@ async def ws_handler(request):
 # --- Backup: poll main for state ---
 async def backup_state_sync():
     global STATE
+    last_main = None
     while True:
-        if ROLE == 'backup' and MAIN_ADDR:
+        # Always sync if not main
+        if ROLE != 'main' and MAIN_ADDR:
+            if MAIN_ADDR != last_main:
+                # On main change, force immediate fetch
+                last_main = MAIN_ADDR
             try:
                 url = f"http://{MAIN_ADDR}/state"
-                async with web.ClientSession() as session:
-                    async with session.get(url, timeout=1) as resp:
+                async with ClientSession() as session:
+                    async with session.get(url, timeout=2) as resp:
                         if resp.status == 200:
                             new_state = await resp.json()
                             STATE = new_state
