@@ -42,6 +42,9 @@ function App(){
     let reconnectTimeout = null;
     let isUnmounted = false;
     let servers = [];
+    let failedServers = {};
+    const COOLDOWN = 10000; // 10 seconds
+    // eslint-disable-next-line
     let currentMain = null;
 
     async function fetchConfig() {
@@ -51,8 +54,13 @@ function App(){
     }
 
     async function findMainServer() {
-      // Query all servers for /health, pick the one with role: 'main'
+      const now = Date.now();
       for (const s of servers) {
+        const key = s.host + ':' + s.port;
+        // Skip servers that failed recently
+        if (failedServers[key] && now - failedServers[key] < COOLDOWN) {
+          continue;
+        }
         try {
           const url = `http://${s.host}:${s.port}/health`;
           const res = await fetch(url, { timeout: 1000 });
@@ -60,7 +68,12 @@ function App(){
           if (data.role === 'main') {
             return s;
           }
-        } catch {}
+        } catch {
+          if (!failedServers[key]) {
+            console.warn(`Server unreachable: ${key}`);
+          }
+          failedServers[key] = Date.now();
+        }
       }
       return null;
     }
@@ -95,6 +108,7 @@ function App(){
       ws.onclose = () => {
         if (isUnmounted) return;
         console.log('websocket connection closed:', wsUrl);
+        failedServers[server.host + ':' + server.port] = Date.now();
         attemptReconnect();
       };
       ws.onerror = (error) => {
