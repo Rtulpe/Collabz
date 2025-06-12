@@ -1,15 +1,20 @@
-import React , {useState , useEffect , useLayoutEffect} from 'react' ;
-import './App.css' ; 
+import { useRef, useState, useEffect, useCallback } from 'react';
+import Editor, { useMonaco } from '@monaco-editor/react';
+import './App.css';
 
-function App(){
-  const [document , setDocument] = useState("") ; 
-  const [socket,setSocket] = useState(null) ; 
+function App() {
+  const [document, setDocument] = useState("");
+  const [socket, setSocket] = useState(null);
   const [clientId, setClientId] = useState(null);
   const [cursors, setCursors] = useState({}); // { clientId: { position, lastActive } }
-  const [cursorCoords, setCursorCoords] = useState({}); // { clientId: {top, left} }
-  const [clientAddr, setClientAddr] = useState(null); // <-- NEW
-  const textareaRef = React.useRef(null);
-  const mirrorRef = React.useRef(null);
+  const [clientAddr, setClientAddr] = useState(null);
+  const editorRef = useRef(null);
+  const monaco = useMonaco();
+  const socketRef = useRef(null); // NEW
+  const clientIdRef = useRef(null); // NEW
+
+  // Used to suppress sending update when applying remote update
+  const suppressNextUpdateRef = useRef(false);
 
   // Fetch client address from config
   useEffect(() => {
@@ -29,14 +34,31 @@ function App(){
         const now = Date.now();
         const filtered = {};
         Object.entries(prev).forEach(([id, data]) => {
-          if (now - data.lastActive < 30000) filtered[id] = data;
+          // Only keep cursors active in the last 5 seconds
+          if (now - data.lastActive < 5000) filtered[id] = data;
         });
         return filtered;
       });
+      // Remove decorations for any cursors that are no longer present
+      if (editorRef.current && editorRef.current.getModel()) {
+        const editor = editorRef.current;
+        const model = editor.getModel();
+        // Remove all remote cursor decorations if no remote cursors remain
+        if (editor._remoteCursorDecorations) {
+          // Remove all decorations if no filtered remote cursors remain
+          if (Object.keys(cursors).length === 0) {
+            editor._remoteCursorDecorations = editor.deltaDecorations(
+              editor._remoteCursorDecorations,
+              []
+            );
+          }
+        }
+      }
     }, 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, []); // Remove [cursors] dependency so cleanup is based on time, not new messages
 
+  // WebSocket logic (unchanged except for Monaco integration)
   useEffect(() => {
     let ws;
     let reconnectTimeout = null;
@@ -44,8 +66,6 @@ function App(){
     let servers = [];
     let failedServers = {};
     const COOLDOWN = 10000; // 10 seconds
-    // eslint-disable-next-line
-    let currentMain = null;
 
     async function fetchConfig() {
       const res = await fetch('/client_config.json');
@@ -57,20 +77,22 @@ function App(){
       const now = Date.now();
       for (const s of servers) {
         const key = s.host + ':' + s.port;
-        // Skip servers that failed recently
         if (failedServers[key] && now - failedServers[key] < COOLDOWN) {
           continue;
         }
         try {
           const url = `http://${s.host}:${s.port}/health`;
           const res = await fetch(url, { timeout: 1000 });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const data = await res.json();
           if (data.role === 'main') {
             return s;
           }
-        } catch {
+        } catch (err) {
+          // Only warn, do not throw
           if (!failedServers[key]) {
-            console.warn(`Server unreachable: ${key}`);
+            // Only log once per cooldown
+            // console.warn(`Server unreachable: ${key}`, err);
           }
           failedServers[key] = Date.now();
         }
@@ -84,36 +106,53 @@ function App(){
       ws = new window.WebSocket(wsUrl);
       ws.onopen = () => {
         setSocket(ws);
-        currentMain = server;
+        socketRef.current = ws; // Always keep ref up to date
         console.log('websocket connection established:', wsUrl);
       };
       ws.onmessage = (event) => {
-        try{
+        try {
           const message = JSON.parse(event.data);
-          if(message.type === 'init'){
+          if (message.type === 'init') {
             setDocument(message.data);
+            lastSentDocRef.current = message.data;
             if (message.clientId) setClientId(message.clientId);
-          }else if(message.type === 'update'){
+            if (editorRef.current && editorRef.current.getModel()) {
+              suppressNextUpdateRef.current = true;
+              editorRef.current.setValue(message.data);
+              // DO NOT broadcast local cursor after init (prevents infinite loop)
+            }
+          } else if (message.type === 'update') {
             setDocument(message.data);
-          }else if(message.type === 'cursor'){
-            setCursors(prev => ({
-              ...prev,
-              [message.clientId]: { position: message.position, lastActive: Date.now() }
-            }));
+            lastSentDocRef.current = message.data;
+            if (editorRef.current && editorRef.current.getModel() && editorRef.current.getValue() !== message.data) {
+              const editor = editorRef.current;
+              const selection = editor.getSelection();
+              suppressNextUpdateRef.current = true;
+              editor.setValue(message.data);
+              if (selection) editor.setSelection(selection);
+              // DO NOT broadcast local cursor after update (prevents infinite loop)
+            }
           }
-        } catch(error){
-          console.error('error parsing message', error);
+          else if (message.type === 'cursor') {
+            if (message.clientId !== clientIdRef.current) {
+              setCursors(prev => ({
+                ...prev,
+                [message.clientId]: { position: message.position, lastActive: Date.now() }
+              }));
+            }
+          }
+        } catch (error) {
+          // Ignore parse errors
         }
       };
       ws.onclose = () => {
         if (isUnmounted) return;
-        console.log('websocket connection closed:', wsUrl);
+        // console.log('websocket connection closed:', wsUrl);
         failedServers[server.host + ':' + server.port] = Date.now();
         attemptReconnect();
       };
       ws.onerror = (error) => {
         if (isUnmounted) return;
-        console.error('websocket error:', error);
         ws.close();
       };
     }
@@ -125,7 +164,6 @@ function App(){
         if (main) {
           connectToServer(main);
         } else {
-          // Try again in 2s
           attemptReconnect();
         }
       }, 2000);
@@ -146,115 +184,105 @@ function App(){
       if (ws) ws.close();
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
     };
-  },[]) ;
+  }, []);
 
-  const handleChange = (e) => {
-    const newDocument = e.target.value ; 
-    setDocument(newDocument) ;
-    if(socket && socket.readyState === WebSocket.OPEN){
-      socket.send(JSON.stringify({type: 'update' , data: newDocument}))  ;
+  // Handle local edits
+  const lastSentDocRef = useRef("");
+  const handleEditorChange = (value, event) => {
+    if (suppressNextUpdateRef.current) {
+      suppressNextUpdateRef.current = false;
+      setDocument(value);
+      lastSentDocRef.current = value;
+      return;
     }
-  };
-
-  const handleCursor = (e) => {
-    const pos = e.target.selectionStart;
-    if(socket && socket.readyState === WebSocket.OPEN && clientId){
-      socket.send(JSON.stringify({type: 'cursor', position: pos, clientId}));
-    }
-  };
-
-  // Helper to copy computed styles from textarea to mirror
-  const copyTextareaStyles = () => {
-    const textarea = textareaRef.current;
-    const mirror = mirrorRef.current;
-    if (!textarea || !mirror) return;
-    const style = window.getComputedStyle(textarea);
-    mirror.style.fontFamily = style.fontFamily;
-    mirror.style.fontSize = style.fontSize;
-    mirror.style.fontWeight = style.fontWeight;
-    mirror.style.letterSpacing = style.letterSpacing;
-    mirror.style.padding = style.padding;
-    mirror.style.border = style.border;
-    mirror.style.boxSizing = style.boxSizing;
-    mirror.style.lineHeight = style.lineHeight;
-    mirror.style.textAlign = style.textAlign;
-    mirror.style.whiteSpace = 'pre-wrap';
-    mirror.style.wordWrap = 'break-word';
-    mirror.style.overflowWrap = 'break-word';
-    mirror.style.width = style.width;
-    mirror.style.height = style.height;
-    mirror.style.minHeight = style.minHeight;
-    mirror.style.maxHeight = style.maxHeight;
-    mirror.style.background = 'transparent';
-    mirror.style.visibility = 'hidden';
-    mirror.style.position = 'absolute';
-    mirror.style.top = '0';
-    mirror.style.left = '0';
-    mirror.style.pointerEvents = 'none';
-    mirror.style.zIndex = '0';
-  };
-
-  // Update mirror content and measure cursor positions after render
-  useLayoutEffect(() => {
-    if (!textareaRef.current || !mirrorRef.current) return;
-    const textarea = textareaRef.current;
-    const mirror = mirrorRef.current;
-    copyTextareaStyles();
-    mirror.scrollTop = textarea.scrollTop;
-    mirror.scrollLeft = textarea.scrollLeft;
-    const newCoords = {};
-    Object.entries(cursors).forEach(([id, data]) => {
-      if (id === clientId) return;
-      const pos = data.position;
-      const text = document;
-      const before = text.slice(0, pos);
-      const after = text.slice(pos);
-      const htmlBefore = before.replace(/\n/g, '<br/>').replace(/ /g, '&nbsp;');
-      const htmlAfter = after.replace(/\n/g, '<br/>').replace(/ /g, '&nbsp;');
-      mirror.innerHTML = `${htmlBefore}<span id='caret-marker'></span>${htmlAfter}`;
-      const marker = mirror.querySelector('#caret-marker');
-      if (marker) {
-        const rect = marker.getBoundingClientRect();
-        const mirrorRect = mirror.getBoundingClientRect();
-        // Offset by textarea scroll
-        newCoords[id] = {
-          top: rect.top - mirrorRect.top - textarea.scrollTop,
-          left: rect.left - mirrorRect.left - textarea.scrollLeft
-        };
+    if (value !== lastSentDocRef.current) {
+      setDocument(value);
+      lastSentDocRef.current = value;
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: 'update', data: value }));
       }
-    });
-    setCursorCoords(newCoords);
-    // Clean up
-    mirror.innerHTML = '';
-  }, [cursors, document, clientId]);
-
-  // Helper to render other clients' cursors as floating bubbles in the textarea
-  const renderCursors = () => {
-    return Object.entries(cursors)
-      .filter(([id]) => id !== clientId)
-      .map(([id], idx) => {
-        const coords = cursorCoords[id] || { top: 0, left: 0 };
-        const label = id[0] ? id[0].toLowerCase() : '?';
-        let charWidth = 9;
-        if (textareaRef.current) {
-          const style = window.getComputedStyle(textareaRef.current);
-          charWidth = parseFloat(style.fontSize) * 0.6;
-        }
-        return (
-          <div
-            key={id}
-            className="remote-cursor-container"
-            style={{
-              top: coords.top,
-              left: coords.left + charWidth * 2,
-            }}
-          >
-            <div className="remote-cursor-label">{label}</div>
-            <div className="remote-cursor-caret">I</div>
-          </div>
-        );
-      });
+    }
   };
+
+  // Keep clientIdRef up to date
+  useEffect(() => {
+    clientIdRef.current = clientId;
+  }, [clientId]);
+
+  // Handle local cursor movement (only send if changed, and only for our own cursor)
+  const lastSentCursorPosRef = useRef(null);
+  const handleEditorCursor = useCallback((editor, monaco) => {
+    const socket = socketRef.current;
+    const clientId = clientIdRef.current;
+    if (socket && socket.readyState === WebSocket.OPEN && clientId) {
+      const pos = editor.getPosition();
+      const offset = editor.getModel().getOffsetAt(pos);
+      if (lastSentCursorPosRef.current !== offset) {
+        lastSentCursorPosRef.current = offset;
+        socket.send(JSON.stringify({ type: 'cursor', position: offset, clientId }));
+      }
+    }
+  }, []);
+
+  // Render remote cursors
+  useEffect(() => {
+    if (!editorRef.current || !monaco || !editorRef.current.getModel()) return;
+    const editor = editorRef.current;
+    // Defensive: skip if no model
+    const model = editor.getModel();
+    if (!model) return;
+    // Remove old decorations
+    editor._remoteCursorDecorations = editor.deltaDecorations(
+      editor._remoteCursorDecorations || [],
+      []
+    );
+    // Add new decorations for all remote cursors
+    const decorations = Object.entries(cursors)
+      .filter(([id]) => id !== clientId && cursors[id] && typeof cursors[id].position === 'number')
+      .map(([id, data]) => {
+        // Defensive: clamp position to model length
+        let pos = 0;
+        try {
+          pos = Math.max(0, Math.min(data.position, model.getValueLength()));
+        } catch (e) { pos = 0; }
+        const monacoPos = model.getPositionAt(pos);
+        return {
+          range: new monaco.Range(monacoPos.lineNumber, monacoPos.column, monacoPos.lineNumber, monacoPos.column),
+          options: {
+            className: 'remote-cursor',
+            hoverMessage: { value: `User: ${id}` },
+            // Only render a thin cursor, no label or after content
+            isWholeLine: false,
+            stickiness: monaco && monaco.editor ? monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges : 0,
+          },
+        };
+      });
+    editor._remoteCursorDecorations = editor.deltaDecorations(
+      editor._remoteCursorDecorations || [],
+      decorations
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cursors, clientId, document, monaco]);
+
+  // Editor mount
+  const handleEditorDidMount = (editor, monaco) => {
+    editorRef.current = editor;
+    // Send cursor on position change
+    editor.onDidChangeCursorPosition(() => handleEditorCursor(editor, monaco));
+    // Also send cursor on selection change (covers mouse, keyboard, etc)
+    editor.onDidChangeCursorSelection(() => handleEditorCursor(editor, monaco));
+    // Optionally, send cursor on focus (in case of missed events)
+    editor.onDidFocusEditorWidget(() => handleEditorCursor(editor, monaco));
+    // Immediately broadcast local cursor on mount
+    handleEditorCursor(editor, monaco);
+  };
+
+  // Debug log for clientId
+  useEffect(() => {
+    if (clientId) {
+      console.log('My clientId:', clientId);
+    }
+  }, [clientId]);
 
   return (
     <div className='App' style={{ position: 'relative' }}>
@@ -264,24 +292,25 @@ function App(){
           <b>Client address:</b> <span>{clientAddr}</span>
         </div>
       )}
-      <div style={{ position: 'relative', display: 'inline-block' }}>
-        <textarea
-           ref={textareaRef}
-           value={document}
-           onChange={handleChange}
-           onSelect={handleCursor}
-           onKeyUp={handleCursor}
-           rows="20"
-           cols = "80"
-           style={{ position: 'relative', zIndex: 1 }}
-         />
-        {/* Hidden mirror div for accurate cursor positioning */}
-        <div
-          id="textarea-mirror"
-          ref={mirrorRef}
-          className="textarea-mirror"
+      <div style={{ position: 'relative', display: 'inline-block', width: '800px', height: '500px' }}>
+        <Editor
+          height="500px"
+          width="800px"
+          defaultLanguage="plaintext"
+          value={document}
+          onChange={handleEditorChange}
+          onMount={handleEditorDidMount}
+          options={{
+            minimap: { enabled: false },
+            fontSize: 16,
+            fontFamily: 'monospace',
+            scrollBeyondLastLine: false,
+            wordWrap: 'on',
+            lineNumbers: 'on',
+            renderLineHighlight: 'none',
+            cursorSmoothCaretAnimation: true,
+          }}
         />
-        {renderCursors()}
       </div>
     </div>
   );
