@@ -122,20 +122,28 @@ function wsHandler(ws) {
                     }
                 }
             } else if (data.type === 'cursor') {
-                STATE.cursors[data.clientId] = { position: data.position, lastActive: Date.now() / 1000 };
-                for (const c of CLIENTS) {
-                    if (c !== ws && c.readyState === WebSocket.OPEN) {
-                        c.send(JSON.stringify({ type: 'cursor', clientId: data.clientId, position: data.position }));
+                // Only broadcast if the position actually changed for this clientId
+                const prev = STATE.cursors[data.clientId];
+                if (!prev || prev.position !== data.position) {
+                    STATE.cursors[data.clientId] = { position: data.position, lastActive: Date.now() / 1000 };
+                    for (const c of CLIENTS) {
+                        if (c !== ws && c.readyState === WebSocket.OPEN) {
+                            try {
+                                c.send(JSON.stringify({ type: 'cursor', clientId: data.clientId, position: data.position }));
+                            } catch (e) {
+                                // Ignore errors for closing transports
+                            }
+                        }
                     }
                 }
             }
         } catch (e) {
-            console.error('WS error:', e);
+            // Ignore parse errors
         }
     });
     ws.on('close', () => {
         CLIENTS.delete(ws);
-        delete STATE.cursors[clientId];
+        delete STATE.cursors[clientId]; // Remove cursor state for disconnected client
     });
     ws.on('error', (e) => {
         CLIENTS.delete(ws);
