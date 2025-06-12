@@ -23,23 +23,15 @@ MAIN_ID = None
 MAIN_ADDR = None
 CLIENTS = set()
 
-# Load allowed origins from client_config.json
-CLIENT_CONFIG_PATH = os.path.join(os.path.dirname(__file__), '../client/public/client_config.json')
-allowed_origins = ['http://localhost:3000']
-try:
-    with open(CLIENT_CONFIG_PATH) as f:
-        client_cfg = json.load(f)
-        if 'client' in client_cfg:
-            allowed_origins.append(f"http://{client_cfg['client']['host']}:{client_cfg['client']['port']}")
-except Exception:
-    pass
+# Allow any origin
+allowed_origins = ['*']
 
 @middleware
 async def cors_middleware(request, handler):
     response = await handler(request)
     origin = request.headers.get('Origin')
-    if origin in allowed_origins or '*' in allowed_origins:
-        response.headers['Access-Control-Allow-Origin'] = origin
+    # Allow any origin
+    response.headers['Access-Control-Allow-Origin'] = origin if origin else '*'
     response.headers['Access-Control-Allow-Methods'] = 'GET,POST,OPTIONS'
     response.headers['Access-Control-Allow-Headers'] = '*'
     return response

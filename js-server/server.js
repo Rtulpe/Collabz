@@ -5,6 +5,10 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const cors = require('cors');
+app.use(cors({
+  origin: '*', // Allow any origin
+  credentials: true
+}));
 const { v4: uuidv4 } = require('uuid');
 
 // --- Load config ---
