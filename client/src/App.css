@@ -84,6 +84,22 @@ textarea:focus {
   letter-spacing: 0;
 }
 
+/* App.css additions for Monaco remote cursors */
+.remote-cursor {
+  position: relative;
+  border-left: 2px solid #ff00cc;
+  margin-left: -1px;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.remote-cursor-label:after {
+  content: '●';
+  color: #ff00cc;
+  font-size: 12px;
+  margin-left: 2px;
+}
+
 /* Client Address Styling */
 .client-address {
   margin-bottom: 10px;

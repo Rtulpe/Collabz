@@ -105,24 +105,37 @@ async def ws_handler(request):
         async for msg in ws:
             if msg.type == web.WSMsgType.TEXT:
                 try:
+                    print(f"[WS DEBUG] Received message: {msg.data}")
                     data = json.loads(msg.data)
                     if data['type'] == 'update':
                         STATE['document'] = data['data']
-                        # Broadcast to all
-                        for c in CLIENTS:
+                        for c in list(CLIENTS):
                             if c != ws:
-                                await c.send_json({'type': 'update', 'data': STATE['document']})
+                                try:
+                                    await c.send_json({'type': 'update', 'data': STATE['document']})
+                                except Exception as e:
+                                    print(f"[WS DEBUG] Error sending update to client: {e}")
                     elif data['type'] == 'cursor':
-                        STATE['cursors'][data['clientId']] = {'position': data['position'], 'lastActive': time.time()}
-                        for c in CLIENTS:
-                            if c != ws:
-                                await c.send_json({'type': 'cursor', 'clientId': data['clientId'], 'position': data['position']})
+                        # Only broadcast if the position actually changed for this clientId
+                        prev = STATE['cursors'].get(data['clientId'])
+                        if not prev or prev['position'] != data['position']:
+                            STATE['cursors'][data['clientId']] = {'position': data['position'], 'lastActive': time.time()}
+                            for c in list(CLIENTS):
+                                if c != ws:
+                                    try:
+                                        await c.send_json({'type': 'cursor', 'clientId': data['clientId'], 'position': data['position']})
+                                    except Exception as e:
+                                        print(f"[WS DEBUG] Error sending cursor to client: {e}")
                 except Exception as e:
                     print('WS error:', e)
             elif msg.type == web.WSMsgType.ERROR:
                 print('ws connection closed with exception', ws.exception())
     finally:
         CLIENTS.discard(ws)
+        # Remove cursor state for disconnected client
+        for cid, cursor in list(STATE['cursors'].items()):
+            if cid.startswith(f"{SERVER_ID}-") and cid == client_id:
+                del STATE['cursors'][cid]
     return ws
 
 # --- Backup: poll main for state ---
