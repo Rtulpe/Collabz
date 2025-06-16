@@ -2,6 +2,7 @@
 
 ## 1. Introduction
 This is the Node.js (JavaScript) server for the Collabz editor. It participates in leader election, state sync, and serves clients via WebSocket and HTTP.
+It was developed to parallel the Python server, capable of cross-interaction (Python and JS servers can work together). The server was made to be client-agnostic, as long as same message formats are used.
 
 ## 2. Requirements
 - Node.js (see `.nvmrc` for recommended version)
@@ -17,5 +18,5 @@ This is the Node.js (JavaScript) server for the Collabz editor. It participates 
    ```bash
    node server.js
    ```
-   The server will listen on all interfaces (`0.0.0.0`).
+   The server checks for existing leader, if none is found, it will start a new leader election.
 4. Ensure all servers in the cluster have unique IDs and correct peer lists for robust leader election.
