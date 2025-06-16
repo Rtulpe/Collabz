@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
-import Editor, { useMonaco } from '@monaco-editor/react';
+import Editor from '@monaco-editor/react';
+import useCustomMonaco from './customMonaco';
 import './App.css';
 
 function App() {
@@ -9,7 +10,7 @@ function App() {
   const [cursors, setCursors] = useState({}); // { clientId: { position, lastActive } }
   const [clientAddr, setClientAddr] = useState(null);
   const editorRef = useRef(null);
-  const monaco = useMonaco();
+  const monaco = useCustomMonaco();
   const socketRef = useRef(null); // NEW
   const clientIdRef = useRef(null); // NEW
 
@@ -42,7 +43,6 @@ function App() {
       // Remove decorations for any cursors that are no longer present
       if (editorRef.current && editorRef.current.getModel()) {
         const editor = editorRef.current;
-        const model = editor.getModel();
         // Remove all remote cursor decorations if no remote cursors remain
         if (editor._remoteCursorDecorations) {
           // Remove all decorations if no filtered remote cursors remain
