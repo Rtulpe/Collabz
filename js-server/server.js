@@ -5,11 +5,13 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const cors = require('cors');
+const { v4: uuidv4 } = require('uuid');
+
+const app = express();
 app.use(cors({
   origin: '*', // Allow any origin
   credentials: true
 }));
-const { v4: uuidv4 } = require('uuid');
 
 // --- Load config ---
 const CONFIG_FILE = process.env.SERVER_CONFIG || path.join(__dirname, 'server_config.json');
@@ -30,7 +32,6 @@ try {
     // fallback: just localhost
 }
 
-const app = express();
 app.use(cors({ origin: allowedOrigins }));
 
 const UPTIME = Date.now() / 1000;
