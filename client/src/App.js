@@ -1,12 +1,12 @@
-import { useRef, useState, useCallback } from 'react';
-import Editor, { useMonaco } from '@monaco-editor/react';
-import './App.css';
-import useClientAddr from './hooks/useClientAddr';
-import useCleanupCursors from './hooks/useCleanupCursors';
-import useWebSocket from './hooks/useWebSocket';
-import useKeepClientIdRef from './hooks/useKeepClientIdRef';
-import useDebugClientId from './hooks/useDebugClientId';
-import useRenderRemoteCursors from './hooks/useRenderRemoteCursors';
+import { useRef, useState, useCallback } from "react";
+import Editor, { useMonaco } from "@monaco-editor/react";
+import "./App.css";
+import useClientAddr from "./hooks/useClientAddr";
+import useCleanupCursors from "./hooks/useCleanupCursors";
+import useWebSocket from "./hooks/useWebSocket";
+import useKeepClientIdRef from "./hooks/useKeepClientIdRef";
+import useDebugClientId from "./hooks/useDebugClientId";
+import useRenderRemoteCursors from "./hooks/useRenderRemoteCursors";
 
 function App() {
   const [document, setDocument] = useState(""); // Initialize with empty document
@@ -36,9 +36,19 @@ function App() {
   // Clean up inactive cursors every second
   useCleanupCursors(editorRef, cursors, setCursors);
 
-  // WebSocket logic (unchanged except for Monaco integration)
+  // WebSocket logic
   const lastSentDocRef = useRef("");
-  useWebSocket(setSocket, setDocument, setClientId, setCursors, editorRef, socketRef, clientIdRef, suppressNextUpdateRef, lastSentDocRef);
+  useWebSocket(
+    setSocket,
+    setDocument,
+    setClientId,
+    setCursors,
+    editorRef,
+    socketRef,
+    clientIdRef,
+    suppressNextUpdateRef,
+    lastSentDocRef
+  );
 
   // Keep clientIdRef up to date
   useKeepClientIdRef(clientId, clientIdRef);
@@ -50,7 +60,7 @@ function App() {
   useRenderRemoteCursors(editorRef, monaco, cursors, clientId, document);
 
   // Handle local edits
-  const handleEditorChange = (value, event) => {
+  const handleEditorChange = (value, _) => {
     if (suppressNextUpdateRef.current) {
       suppressNextUpdateRef.current = false;
       setDocument(value);
@@ -61,14 +71,14 @@ function App() {
       setDocument(value);
       lastSentDocRef.current = value;
       if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ type: 'update', data: value }));
+        socket.send(JSON.stringify({ type: "update", data: value }));
       }
     }
   };
 
   // Handle local cursor movement (only send if changed, and only for our own cursor)
   const lastSentCursorPosRef = useRef(null);
-  const handleEditorCursor = useCallback((editor, monaco) => {
+  const handleEditorCursor = useCallback((editor, _) => {
     const socket = socketRef.current;
     const clientId = clientIdRef.current;
     if (socket && socket.readyState === WebSocket.OPEN && clientId) {
@@ -76,7 +86,9 @@ function App() {
       const offset = editor.getModel().getOffsetAt(pos);
       if (lastSentCursorPosRef.current !== offset) {
         lastSentCursorPosRef.current = offset;
-        socket.send(JSON.stringify({ type: 'cursor', position: offset, clientId }));
+        socket.send(
+          JSON.stringify({ type: "cursor", position: offset, clientId })
+        );
       }
     }
   }, []);
@@ -95,14 +107,21 @@ function App() {
   };
 
   return (
-    <div className='App' style={{ position: 'relative' }}>
+    <div className="App" style={{ position: "relative" }}>
       <h1>Tulpe Lens</h1>
       {clientAddr && (
         <div className="client-address">
           <b>Client address:</b> <span>{clientAddr}</span>
         </div>
       )}
-      <div style={{ position: 'relative', display: 'inline-block', width: '800px', height: '500px' }}>
+      <div
+        style={{
+          position: "relative",
+          display: "inline-block",
+          width: "800px",
+          height: "500px",
+        }}
+      >
         <Editor
           height="500px"
           width="800px"
@@ -113,11 +132,11 @@ function App() {
           options={{
             minimap: { enabled: false },
             fontSize: 16,
-            fontFamily: 'monospace',
+            fontFamily: "monospace",
             scrollBeyondLastLine: false,
-            wordWrap: 'on',
-            lineNumbers: 'on',
-            renderLineHighlight: 'none',
+            wordWrap: "on",
+            lineNumbers: "on",
+            renderLineHighlight: "none",
             cursorSmoothCaretAnimation: true,
           }}
         />

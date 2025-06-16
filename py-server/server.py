@@ -1,8 +1,6 @@
 import asyncio
-import websockets
 import json
 import time
-import threading
 from aiohttp import web, ClientSession
 import os
 from aiohttp.web import middleware
@@ -26,6 +24,7 @@ CLIENTS = set()
 # Allow any origin
 allowed_origins = ['*']
 
+
 @middleware
 async def cors_middleware(request, handler):
     response = await handler(request)
@@ -37,6 +36,8 @@ async def cors_middleware(request, handler):
     return response
 
 # --- Election and State Sync ---
+
+
 async def get_peer_uptime(peer):
     url = f"http://{peer['host']}:{peer['port']}/uptime"
     try:
@@ -48,6 +49,7 @@ async def get_peer_uptime(peer):
     except Exception:
         pass
     return None, None
+
 
 async def elect_leader():
     global ROLE, MAIN_ID, MAIN_ADDR
@@ -75,37 +77,45 @@ async def elect_leader():
     if ROLE != prev_role or MAIN_ID != prev_main:
         print(f"[Election] Role: {ROLE}, Main: {MAIN_ID} @ {MAIN_ADDR}")
 
+
 async def periodic_election():
     while True:
         await elect_leader()
         await asyncio.sleep(2)
 
 # --- HTTP API ---
+
+
 async def handle_uptime(request):
     return web.json_response({'id': SERVER_ID, 'uptime': time.time() - UPTIME})
+
 
 async def handle_health(request):
     return web.json_response({'status': 'ok', 'role': ROLE, 'main': MAIN_ID})
 
+
 async def handle_state(request):
     return web.json_response(STATE)
+
 
 async def handle_election(request):
     await elect_leader()
     return web.json_response({'role': ROLE, 'main': MAIN_ID})
 
 # --- WebSocket for clients and backups ---
+
+
 async def ws_handler(request):
     ws = web.WebSocketResponse()
     await ws.prepare(request)
-    client_id = f"{SERVER_ID}-{int(time.time()*1000)%10000}"
+    client_id = f"{SERVER_ID}-{int(time.time()*1000) % 10000}"
     CLIENTS.add(ws)
     try:
         await ws.send_json({'type': 'init', 'data': STATE['document'], 'clientId': client_id})
         async for msg in ws:
             if msg.type == web.WSMsgType.TEXT:
                 try:
-                    print(f"[WS DEBUG] Received message: {msg.data}")
+                    # Handle incoming messages from clients
                     data = json.loads(msg.data)
                     if data['type'] == 'update':
                         STATE['document'] = data['data']
@@ -114,18 +124,21 @@ async def ws_handler(request):
                                 try:
                                     await c.send_json({'type': 'update', 'data': STATE['document']})
                                 except Exception as e:
-                                    print(f"[WS DEBUG] Error sending update to client: {e}")
+                                    print(
+                                        f"[WS DEBUG] Error sending update to client: {e}")
                     elif data['type'] == 'cursor':
                         # Only broadcast if the position actually changed for this clientId
                         prev = STATE['cursors'].get(data['clientId'])
                         if not prev or prev['position'] != data['position']:
-                            STATE['cursors'][data['clientId']] = {'position': data['position'], 'lastActive': time.time()}
+                            STATE['cursors'][data['clientId']] = {
+                                'position': data['position'], 'lastActive': time.time()}
                             for c in list(CLIENTS):
                                 if c != ws:
                                     try:
                                         await c.send_json({'type': 'cursor', 'clientId': data['clientId'], 'position': data['position']})
                                     except Exception as e:
-                                        print(f"[WS DEBUG] Error sending cursor to client: {e}")
+                                        print(
+                                            f"[WS DEBUG] Error sending cursor to client: {e}")
                 except Exception as e:
                     print('WS error:', e)
             elif msg.type == web.WSMsgType.ERROR:
@@ -139,6 +152,8 @@ async def ws_handler(request):
     return ws
 
 # --- Backup: poll main for state ---
+
+
 async def backup_state_sync():
     global STATE
     last_main = None
@@ -160,6 +175,8 @@ async def backup_state_sync():
         await asyncio.sleep(1)
 
 # --- Main ---
+
+
 async def main():
     app = web.Application(middlewares=[cors_middleware])
     app.router.add_get('/uptime', handle_uptime)

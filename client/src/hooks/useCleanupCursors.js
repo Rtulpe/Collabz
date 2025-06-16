@@ -1,9 +1,9 @@
-import { useEffect } from 'react';
+import { useEffect } from "react";
 
 export default function useCleanupCursors(editorRef, cursors, setCursors) {
   useEffect(() => {
     const interval = setInterval(() => {
-      setCursors(prev => {
+      setCursors((prev) => {
         const now = Date.now();
         const filtered = {};
         Object.entries(prev).forEach(([id, data]) => {
