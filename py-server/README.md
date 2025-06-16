@@ -2,7 +2,7 @@
 
 ## 1. Introduction
 This is the Python (aiohttp) server for the Collabz editor. It participates in leader election, state sync, and serves clients via WebSocket and HTTP.
-It was developed to parallel the Python server, capable of cross-interaction (Python and JS servers can work together). The server was made to be client-agnostic, as long as same message formats are used.
+It was developed to parallel the JavaScript server, capable of cross-interaction (Python and JS servers can work together). The server was made to be client-agnostic, as long as same message formats are used.
 
 ## 2. Requirements
 - Python 3.8+
